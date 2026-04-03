@@ -4,7 +4,7 @@
    ============================================ */
 
 
-var API_BASE_URL = "http://localhost:5000/api"; // Change if backend is hosted elsewhere
+var API_BASE_URL = "https://money-dharma.onrender.com/api"; // Change if backend is hosted elsewhere
 
 
 // ===== GLOBAL STATE =====
