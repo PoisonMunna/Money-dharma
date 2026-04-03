@@ -41,22 +41,26 @@ The goal of MoneyDharma is to help users become aware of **financial frauds, gov
 MoneyDharma/
 │
 ├── index.html
-├── login.html
-├── signup.html
+├── script.js
+├── style.css
+├── voice-assistant.js
 │
-├── css/
-│   └── styles.css
+├── database.js
 │
-├── js/
-│   ├── app.js
+├── server.js
+│
+├── routes/
+│   ├── budget.js
 │   ├── auth.js
-│   └── theme.js
+│   ├── savings.js  
+│   └── progress.js
 │
-├── assets/
-│   ├── images
-│   ├── audio
-│   └── videos
+├── models/
+│   └── User.js
 │
+├── data/
+│   └── db.json
+│ 
 └── README.md
 ```
 
