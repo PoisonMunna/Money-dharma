@@ -1,193 +1,208 @@
 const express = require("express");
 const router = express.Router();
+const User = require("../models/User");
+const { authenticateToken } = require("./auth");
 
-// Import model
-const Budget = require("../models/Budget");
-
-// Import middleware
-const { authenticateToken } = require("../middleware/auth");
-
-// =============================================
-// SAVE BUDGET — POST /api/budget
-// =============================================
-router.post("/", authenticateToken, async function (req, res) {
+// ===== GET BUDGET DATA =====
+router.get("/", authenticateToken, async (req, res) => {
   try {
-    var income = req.body.income;
-    var expenses = req.body.expenses;
-    var period = req.body.period;
-
-    // Validate income
-    if (!income || income <= 0) {
-      return res.status(400).json({
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
         success: false,
-        message: "Please enter a valid income amount.",
+        message: "User not found",
       });
     }
 
-    // Clean expenses array
-    var cleanExpenses = [];
+    res.json({
+      success: true,
+      budget: user.budget,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
 
-    if (expenses && Array.isArray(expenses)) {
-      for (var i = 0; i < expenses.length; i++) {
-        var exp = expenses[i];
-        var expName = (exp.name && exp.name.trim()) ? exp.name.trim() : "Other";
-        var expAmount = parseFloat(exp.amount) || 0;
+// ===== SET MONTHLY INCOME =====
+router.post("/income", authenticateToken, async (req, res) => {
+  try {
+    const { monthlyIncome } = req.body;
 
-        if (expAmount > 0) {
-          cleanExpenses.push({
-            name: expName,
-            amount: expAmount,
-          });
-        }
-      }
+    if (!monthlyIncome || monthlyIncome < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid monthly income is required",
+      });
     }
 
-    // Create budget document
-    var newBudget = new Budget({
-      userId: req.user.id,
-      income: parseFloat(income),
-      expenses: cleanExpenses,
-      period: period || "monthly",
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.budget.monthlyIncome = monthlyIncome;
+    user.budget.lastUpdated = new Date();
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Monthly income updated",
+      budget: user.budget,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// ===== ADD EXPENSE =====
+router.post("/expense", authenticateToken, async (req, res) => {
+  try {
+    const { category, amount } = req.body;
+
+    if (!category || !amount || amount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid category and amount are required",
+      });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.budget.expenses.push({
+      category,
+      amount,
+      date: new Date(),
     });
 
-    // Save to database
-    var savedBudget = await newBudget.save();
+    user.budget.lastUpdated = new Date();
+    await user.save();
 
-    // Create tips
-    var tips = [];
-    if (savedBudget.isPositive) {
-      tips.push("You can save ₹" + savedBudget.remaining.toLocaleString("en-IN"));
-      if (savedBudget.remaining / savedBudget.income >= 0.2) {
-        tips.push("Great! You are saving more than 20%.");
-      } else {
-        tips.push("Try the 50-30-20 rule for better savings.");
-      }
-    } else {
-      tips.push("Expenses exceed income by ₹" + Math.abs(savedBudget.remaining).toLocaleString("en-IN"));
-      tips.push("Try reducing non-essential expenses.");
+    res.json({
+      success: true,
+      message: "Expense added successfully",
+      budget: user.budget,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// ===== GET EXPENSES SUMMARY =====
+router.get("/summary", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
-    return res.status(201).json({
+    const totalExpenses = user.budget.expenses.reduce(
+      (sum, expense) => sum + expense.amount,
+      0
+    );
+
+    const expenseByCategory = {};
+    user.budget.expenses.forEach((expense) => {
+      expenseByCategory[expense.category] =
+        (expenseByCategory[expense.category] || 0) + expense.amount;
+    });
+
+    const remaining = user.budget.monthlyIncome - totalExpenses;
+
+    res.json({
       success: true,
-      message: savedBudget.isPositive ? "You have room to save!" : "Expenses are too high.",
-      data: {
-        budget: savedBudget,
-        summary: {
-          income: savedBudget.income,
-          totalExpenses: savedBudget.totalExpenses,
-          remaining: savedBudget.remaining,
-          isPositive: savedBudget.isPositive,
-        },
-        tips: tips,
+      summary: {
+        monthlyIncome: user.budget.monthlyIncome,
+        totalExpenses,
+        remaining,
+        expenseByCategory,
+        expenseCount: user.budget.expenses.length,
       },
     });
-  } catch (err) {
-    console.error("BUDGET SAVE ERROR:", err.message);
-    console.error(err);
-
-    return res.status(500).json({
+  } catch (error) {
+    res.status(500).json({
       success: false,
-      message: "Failed to save budget. Error: " + err.message,
+      message: error.message,
     });
   }
 });
 
-// =============================================
-// GET ALL BUDGETS — GET /api/budget
-// =============================================
-router.get("/", authenticateToken, async function (req, res) {
+// ===== DELETE EXPENSE =====
+router.delete("/expense/:id", authenticateToken, async (req, res) => {
   try {
-    var budgets = await Budget.find({ userId: req.user.id })
-      .sort({ createdAt: -1 })
-      .limit(50);
-
-    return res.json({
-      success: true,
-      data: budgets,
-      count: budgets.length,
-    });
-  } catch (err) {
-    console.error("GET BUDGETS ERROR:", err.message);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch budgets.",
-    });
-  }
-});
-
-// =============================================
-// GET ONE BUDGET — GET /api/budget/:id
-// =============================================
-router.get("/:id", authenticateToken, async function (req, res) {
-  try {
-    // Validate ID format
-    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid budget ID.",
-      });
-    }
-
-    var budget = await Budget.findOne({
-      _id: req.params.id,
-      userId: req.user.id,
-    });
-
-    if (!budget) {
+    const user = await User.findById(req.userId);
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Budget not found.",
+        message: "User not found",
       });
     }
 
-    return res.json({
+    // Remove expense by index or ID
+    user.budget.expenses = user.budget.expenses.filter(
+      (_, index) => index.toString() !== req.params.id
+    );
+
+    user.budget.lastUpdated = new Date();
+    await user.save();
+
+    res.json({
       success: true,
-      data: budget,
+      message: "Expense deleted",
+      budget: user.budget,
     });
-  } catch (err) {
-    console.error("GET BUDGET ERROR:", err.message);
-    return res.status(500).json({
+  } catch (error) {
+    res.status(500).json({
       success: false,
-      message: "Failed to fetch budget.",
+      message: error.message,
     });
   }
 });
 
-// =============================================
-// DELETE BUDGET — DELETE /api/budget/:id
-// =============================================
-router.delete("/:id", authenticateToken, async function (req, res) {
+// ===== CLEAR ALL EXPENSES =====
+router.delete("/", authenticateToken, async (req, res) => {
   try {
-    // Validate ID format
-    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid budget ID.",
-      });
-    }
-
-    var budget = await Budget.findOneAndDelete({
-      _id: req.params.id,
-      userId: req.user.id,
-    });
-
-    if (!budget) {
+    const user = await User.findById(req.userId);
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Budget not found.",
+        message: "User not found",
       });
     }
 
-    return res.json({
+    user.budget.expenses = [];
+    user.budget.lastUpdated = new Date();
+    await user.save();
+
+    res.json({
       success: true,
-      message: "Budget deleted.",
-    })
-    
-  } catch (err) {
-    console.error("DELETE BUDGET ERROR:", err.message);
-    return res.status(500).json({
+      message: "All expenses cleared",
+      budget: user.budget,
+    });
+  } catch (error) {
+    res.status(500).json({
       success: false,
-      message: "Failed to delete budget.",
+      message: error.message,
     });
   }
 });
