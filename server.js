@@ -90,7 +90,6 @@ app.use("/api/", generalLimiter);
 // ========================================
 // STATIC FILES
 // ========================================
-app.use(express.static(path.join(__dirname, "public")));
 
 // ========================================
 // HEALTH CHECK (before other routes)
