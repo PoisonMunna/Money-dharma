@@ -25,7 +25,7 @@ app.use(
 // ✅ FIX 1: CORS - Allow multiple frontend origins
 // ✅ FIX: CORS - Allow multiple frontend origins including 127.0.0.1
 const allowedOrigins = [
-  "http://127.0.0.1:3000"
+  "https://money-dharma.onrender.com/"
 ].filter(Boolean);
 
 app.use(
