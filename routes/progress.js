@@ -1,108 +1,165 @@
 const express = require("express");
-const Progress = require("../models/Progress");
-const { authenticateToken } = require("../middleware/auth");
-
 const router = express.Router();
-const TOTAL_MODULES = 6;
+const User = require("../models/User");
+const { authenticateToken } = require("./auth");
 
-// GET PROGRESS
+// ===== GET USER PROGRESS =====
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    let progress = await Progress.findOne({ userId: req.user.id });
-    if (!progress) {
-      progress = await Progress.create({ userId: req.user.id });
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
-    res.json({ success: true, data: progress });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Failed to fetch progress." });
-  }
-});
-
-// COMPLETE LESSON
-router.post("/complete-lesson", authenticateToken, async (req, res) => {
-  try {
-    const { moduleId, moduleName } = req.body;
-
-    if (!moduleId) {
-      return res.status(400).json({ success: false, message: "Module ID required." });
-    }
-
-    let progress = await Progress.findOne({ userId: req.user.id });
-    if (!progress) {
-      progress = await Progress.create({ userId: req.user.id });
-    }
-
-    const alreadyDone = progress.completedModules.some(
-      (m) => m.moduleId === moduleId
-    );
-
-    if (alreadyDone) {
-      return res.json({ success: true, message: "Already completed.", data: progress });
-    }
-
-    progress.completedModules.push({
-      moduleId,
-      moduleName: moduleName || "Unknown",
-    });
-
-    const lessons = progress.completedModules.length;
-    const goals = progress.goalsStarted;
-
-    progress.lessonsCompleted = lessons;
-    progress.progressBasics = Math.min(Math.round((lessons / TOTAL_MODULES) * 100), 100);
-    progress.progressSavings = Math.min(Math.round(((lessons + goals) / TOTAL_MODULES) * 80), 100);
-    progress.progressDigital = Math.min(Math.round((lessons / TOTAL_MODULES) * 60), 100);
-    progress.progressSchemes = Math.min(Math.round((lessons / TOTAL_MODULES) * 50), 100);
-    progress.skillsLearned = Math.min(lessons + goals, 10);
-
-    await progress.save();
 
     res.json({
       success: true,
-      message: `Lesson completed! ${lessons} done.`,
-      data: progress,
+      progress: user.progress,
     });
-  } catch (err) {
-    console.error("Complete lesson error:", err);
-    res.status(500).json({ success: false, message: "Failed to update." });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
-// GET HISTORY
-router.get("/history", authenticateToken, async (req, res) => {
+// ===== UPDATE PROGRESS =====
+router.put("/", authenticateToken, async (req, res) => {
   try {
-    const progress = await Progress.findOne({ userId: req.user.id });
-    if (!progress) return res.json({ success: true, data: [] });
+    const { completedLessons, goalsStarted, skillsLearned } = req.body;
 
-    const history = [...progress.completedModules].sort(
-      (a, b) => new Date(b.completedAt) - new Date(a.completedAt)
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Update progress fields
+    if (completedLessons !== undefined) {
+      user.progress.completedLessons = completedLessons;
+    }
+    if (goalsStarted !== undefined) {
+      user.progress.goalsStarted = goalsStarted;
+    }
+    if (skillsLearned !== undefined) {
+      user.progress.skillsLearned = skillsLearned;
+    }
+
+    // Update progress bars
+    user.progress.progressBars.basics = Math.min(
+      Math.round((completedLessons / 6) * 100),
+      100
+    );
+    user.progress.progressBars.savings = Math.min(
+      Math.round(((completedLessons + goalsStarted) / 6) * 80),
+      100
+    );
+    user.progress.progressBars.digital = Math.min(
+      Math.round((completedLessons / 6) * 60),
+      100
+    );
+    user.progress.progressBars.schemes = Math.min(
+      Math.round((completedLessons / 6) * 50),
+      100
     );
 
-    res.json({ success: true, data: history });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Failed." });
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Progress updated successfully",
+      progress: user.progress,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
-// RESET
-router.delete("/reset", authenticateToken, async (req, res) => {
+// ===== ADD COMPLETED LESSON =====
+router.post("/lesson", authenticateToken, async (req, res) => {
   try {
-    await Progress.findOneAndUpdate(
-      { userId: req.user.id },
-      {
-        lessonsCompleted: 0,
-        goalsStarted: 0,
-        skillsLearned: 0,
-        completedModules: [],
-        progressBasics: 0,
-        progressSavings: 0,
-        progressDigital: 0,
-        progressSchemes: 0,
-      }
+    const { lessonId, lessonName, score } = req.body;
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Add to lessons data
+    user.progress.lessonsData.push({
+      lessonId,
+      lessonName,
+      completedAt: new Date(),
+      score: score || 0,
+    });
+
+    // Increment completed lessons
+    user.progress.completedLessons += 1;
+
+    // Update skills learned
+    user.progress.skillsLearned = Math.min(
+      user.progress.completedLessons + user.progress.goalsStarted,
+      10
     );
-    res.json({ success: true, message: "Progress reset." });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Reset failed." });
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Lesson marked as complete",
+      progress: user.progress,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// ===== ADD SAVINGS GOAL =====
+router.post("/goal", authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Increment goals started
+    user.progress.goalsStarted += 1;
+
+    // Update skills learned
+    user.progress.skillsLearned = Math.min(
+      user.progress.completedLessons + user.progress.goalsStarted,
+      10
+    );
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Savings goal added",
+      progress: user.progress,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
