@@ -203,12 +203,12 @@ const pages = [
 ];
 
 app.get("/", (req, res) =>
-  res.sendFile(path.join(__dirname, "public", "index.html"))
+  res.sendFile(path.join(__dirname,  "index.html"))
 );
 
 pages.forEach((page) => {
   app.get(`/${page}`, (req, res) =>
-    res.sendFile(path.join(__dirname, "public", "index.html"))
+    res.sendFile(path.join(__dirname, "index.html"))
   );
 });
 
@@ -221,7 +221,7 @@ app.get("*", (req, res) => {
       message: "API route not found",
     });
   }
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // ========================================
