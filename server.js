@@ -90,7 +90,6 @@ app.use("/api/", generalLimiter);
 // ========================================
 // STATIC FILES
 // ========================================
-app.use(express.static(path.join(__dirname, "public")));
 
 // ========================================
 // HEALTH CHECK (before other routes)
@@ -202,8 +201,23 @@ const pages = [
   "progress",
 ];
 
+
+
+app.get('/style.css', (req, res) => {
+    res.sendFile(path.join(__dirname, 'style.css'));
+});
+
+app.get('/script.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'script.js'));
+});
+
+app.get('/voice-assistant.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'voice-assistant.js'));
+});
+
+
 app.get("/", (req, res) =>
-  res.sendFile(path.join(__dirname,"index.html"))
+  res.sendFile(path.join(__dirname,  "index.html"))
 );
 
 pages.forEach((page) => {
